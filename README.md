@@ -127,6 +127,24 @@ node index.js --wallet=3           # single wallet
 
 ---
 
+## Anti-pattern detection (behaviour humanisation)
+
+The backend has no captcha and the API answers plain requests (Cloudflare sits in front, but
+`/mining/stats` returns 200 unauthenticated). So the risk is not "being caught by a WAF" — it is
+**behavioural uniformity** that shows up in server logs.
+
+| Before | After |
+|---|---|
+| Re-login every run (nonce → sign → login each time) | JWT cached 72h in `tokens.json` → ~1 login per 2.5 days |
+| Chrome UA without `sec-ch-ua` / `sec-fetch-*` (impossible in a real browser) | Full consistent header set: `sec-ch-ua`, `sec-ch-ua-platform`, `accept-language`, `sec-fetch-site/mode/dest`, `priority` |
+| Uniform 0.7–1.4s gaps | Log-normal gaps (mostly fast, occasionally slow) + 20–90s pause on some runs |
+| Always deploy to energy 0, identical phase order on every wallet | 40% of runs stop at 70–90% energy; phase order shuffled per wallet (deterministic per address, 12 permutations) |
+
+Still unhandled and the biggest remaining signal: **all wallets share one IP**. Per-wallet sticky
+proxies matter more than everything above if sybil clustering is the concern.
+
+---
+
 ## Known limits
 
 - **X (Twitter) quests** need a linked handle in Miner Center — semi-manual by design, server rejects otherwise.
