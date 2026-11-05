@@ -1,116 +1,138 @@
-# Bull Games (Bull Gems) Mining Bot
+# Bull Gems Mining Bot (Showcase)
 
-Multi-account automation bot for **Bull Games** (gem.bullshot.io) — the mining & quest game on **Base Network** backed by **Bullshot** (memecoin launchpad, $7.7M raised from Animoca Brands, P2 Ventures, AWS).
+Automation bot for **Bull Games / Bull Gems** (`gem.bullshot.io`) — mining & quest game on **Base Network**, backed by Bullshot (memecoin launchpad, **$7.7M** raised from Animoca Brands, P2 Ventures, AWS, B1, Poolz).
 
-Automates wallet auth, daily/weekly check-ins, quests, mining, and referral claims. **No captcha, no gas needed for farming.**
+Wallet-signature auth (no captcha, no gas for farming) + full daily loop: **achievements → quests → mining → auto-spend on equipment & upgrades → deploy → referral**.
 
----
-
-## Features
-
-- **Wallet Signature Auth** — automatic login via `personal_sign` (no captcha, no OAuth)
-- **Daily Miner Sign-in** — auto-claim daily check-in
-- **Weekly Miner Check-in** — auto-claim weekly
-- **Quest auto-claim** — TG/Discord/one-time quests (cooldown-aware retry)
-- **Mining automation** — auto-start mining at best affordable location + auto-claim rewards per timer
-- **Referral claim** — auto-claim pending referral bonuses
-- **Multi-wallet** — one private key per line in `privateKey.txt`
-- **Proxy support** — optional HTTP/SOCKS5 per wallet (rotate from `proxy.txt`)
-- **401 auto-reauth** — re-login on session expiry
-- **Cooldown handling** — honors server "verification in progress" wait
-- **Colored logging** + per-wallet `logs.log`
+> This repository is a public showcase (features + setup guide). Full source is private.
 
 ---
 
-## Requirements
+## What it does
 
-| Item | Required? | Cost |
-|------|-----------|------|
-| Node.js v18+ | Yes | Free |
-| EVM wallet(s) with private key | Yes | Free |
-| Base network ETH (gas) | Only for trading/on-chain actions | ~$0 |
-| X (Twitter) account | Only for X quests (optional) | Free |
-| Proxy (optional) | No | Optional |
+| Feature | Detail |
+|---|---|
+| **Wallet signature auth** | `POST /auth/nonce` → `personal_sign` → `POST /auth/login` → JWT. No captcha, no OAuth |
+| **Auto-claim achievements** | Reads Miner Milestones, claims every unlocked milestone (one-time GEMS) |
+| **Auto-buy equipment** | Buys mining gear by level eligibility, cheapest first — mining power is **additive** per owned item |
+| **Auto-buy upgrades** | Mining Power / Speed / Energy Capacity, re-reads server cost every purchase, respects caps |
+| **Mining automation** | Claims every finished position, then deploys repeatedly until energy hits 0 (multi-position) |
+| **Quest automation** | Daily / weekly / one-time `actionType: intent` quests, cooldown-aware retry |
+| **Referral claim** | Auto-claims pending referral bonuses (10% of invitees' GEMS) |
+| **Multi-wallet** | One private key per line, sequential with jitter delay |
+| **Proxy support** | HTTP / SOCKS5, rotated per wallet |
+| **401 auto-reauth** | Re-signs and retries transparently |
+| **Dry run** | Prints the exact shopping plan without spending a single GEM |
 
-**Cost to farm: FREE** — mining, check-ins, and quest claims are all off-chain. No gas needed.
+---
+
+## Execution order (why it's built this way)
+
+```
+1. Claim achievements      free GEMS, no cooldown
+2. Claim quests            daily / weekly / one-time
+3. Claim finished mining   positions whose timer expired
+4. Spend: equipment → upgrades   funded by steps 1-3
+5. Deploy mining           now with the improved power/speed
+6. Claim referral
+```
+
+Spending happens *after* earning and *before* deploying, so every run mines with the best stats the wallet can afford.
+
+---
+
+## Economy: why Mining Power is the default target
+
+Live values from `/mining/locations`:
+
+| Location | Lvl | Energy | Power req | Duration | GEMS | GEMS/energy |
+|---|---|---|---|---|---|---|
+| cave-* (Greenstone) | 1 | 5 | 0 | 1 min | 5-15 | 3.00 |
+| crystal-cavern | 4 | 20 | 25 | 30 min | 25-45 | 2.25 |
+| ember-mine | 8 | 35 | 60 | 90 min | 60-100 | 2.86 |
+| **frozen-depths** | 14 | 50 | **120** | 4 h | 200-350 | **7.00** |
+| **void-rift** | 20 | 75 | **250** | 8 h | 500-800 | **10.67** |
+
+Caves are the best early game, but `frozen-depths` and `void-rift` pay **2-3.5x more per energy** — they only unlock through mining power. Power upgrades cost a flat 250 GEMS for +5 PWR with no cap, so they are the shortest path upward.
+
+Energy Capacity is deliberately **not** bought by default: it raises the storage ceiling, not the energy income, and the bot spends energy every run.
 
 ---
 
 ## Setup
 
 ```bash
+git clone <private-repo>   # buyers only
 cd bullgems-bot
 npm install
 ```
 
-1. Edit `config.json` (or copy from `config.json.example`).
-2. Add your wallet private keys to `privateKey.txt` — one per line.
-3. (Optional) Add proxies to `proxy.txt` — one per line (`http://ip:port` or `socks5://ip:port`).
-4. Run:
+1. Copy `config.json.example` → `config.json`.
+2. Put wallet private keys in `privateKey.txt`, one per line.
+3. (Optional) Put proxies in `proxy.txt`, one per line.
+4. Run.
+
 ```bash
-node index.js
+node index.js                      # interactive menu
+node index.js --auto               # full run, no menu
+node index.js --auto --dry-run     # preview purchases only
+node index.js --wallet=3           # single wallet
 ```
 
----
-
-## Usage / Menu
+### Menu
 
 ```
-1. Run daily (quests + mining + referral)   <- recommended
-2. Auth only (login + profile check)
+1. Run daily  (achievements + quests + mining + auto upgrade + auto buy)
+2. Auth only
 3. Mining only
 4. Quests only
 5. Check referral stats
+6. Auto upgrade + buy equipment only
+7. Dry run (shopping plan, no purchases)
 ```
 
-### config.json options
+### Key config options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `baseUrl` | gemapi.bullshot.io/api | Backend API |
-| `referrerCode` | `0x7b9c8f8e` | Referral code sent on login |
-| `delayMin` / `delayMax` | 3 / 8 | Seconds between wallets |
-| `autoMining` | true | Auto start + claim mining |
-| `autoQuests` | true | Auto claim intent quests |
-| `autoClaimReferral` | true | Auto claim referral bonus |
-| `miningLocation` | `auto` | Specific location id, or auto-pick |
-| `timeout` / `maxRetries` | 20000 / 3 | HTTP timeout / retries |
-| `proxyFile` | proxy.txt | Proxy list filename |
-
----
-
-## Project Info
-
-| Field | Value |
-|-------|-------|
-| Project | Bull Games (Bull Gems) |
-| URL | https://gem.bullshot.io |
-| Chain | Base (mainnet) |
-| Backend | gemapi.bullshot.io/api |
-| Token | $BULL (unannounced) |
-| Airdrop | **NOT confirmed** — GEMS/XP conversion unannounced |
-| Funding | $7.7M (Animoca, P2 Ventures, AWS, B1, Poolz, Becker, OneAM) |
-| Active miners | ~794,000 |
-| Referral | 10% of invited miners' claimed GEMS |
+| Option | Default | Meaning |
+|---|---|---|
+| `autoAchievements` | true | Claim unlocked achievements |
+| `autoUpgrade` | true | Buy upgrades while GEMS allow |
+| `autoBuyEquipment` | true | Buy shop equipment while GEMS allow |
+| `upgradeTypes` | `["miningPower"]` | Purchase priority order; add `miningSpeed` / `energyCapacity` |
+| `maxUpgradesPerRun` | 10 | Upgrade purchase cap per run |
+| `maxEquipmentPerRun` | 6 | Equipment purchase cap per run |
+| `gemsReserve` | 0 | GEMS the bot must never spend |
+| `maxDeploysPerRun` | 50 | Mining deploy safety cap |
 
 ---
 
-## Troubleshooting
+## Requirements
 
-| Problem | Fix |
-|---------|-----|
-| `Nonce failed ... timeout` | Transient rate-limit. Increase `timeout`, retry. Bot auto-retries. |
-| `Session expired or invalid` | 401 → bot auto-reauths and retries. |
-| `Verification in progress, wait N` | Server cooldown. Bot waits automatically. |
-| `Please link your X (Twitter)` | X quests need a linked handle in Miner Center. Link once in browser. |
-| `Banned` | Account flagged. Check ban reason in logs. |
-
----
-
-## Disclaimer
-
-Airdrop is **not confirmed**. GEMS have no guaranteed token conversion. Farm at your own discretion. This bot is for educational/automation purposes. Only use wallets you control.
+| Item | Needed | Cost |
+|---|---|---|
+| Node.js 18+ | Yes | Free |
+| EVM wallet private key(s) | Yes | Free |
+| Base ETH | No (off-chain farming) | $0 |
+| X account | Only for X quests | Free |
+| Proxy | Optional | Optional |
 
 ---
 
-**Layer Airdrop ID** — Contact: [@rmndkyl](https://t.me/rmndkyl)
+## Verified behaviour (live test)
+
+- Achievements: 3-4 claimed per wallet, **+300 to +400 GEMS** on first run
+- Equipment: Iron Pickaxe then Iron Drill bought → mining power **2 → 4 → 10** (proves additive stacking)
+- Upgrades: Mining Power I x7 → power **60 → 95**, cost fixed at 250, no cap
+- Full run on one wallet: 20 claims (+295.8 GEMS), 20 deploys, energy 100 → 0, power 2 → 35
+
+---
+
+## Known limits
+
+- **X (Twitter) quests** need a linked handle in Miner Center — semi-manual by design, server rejects otherwise.
+- **Referral claim** only fires when a pending bonus exists.
+- Airdrop is **not confirmed**; GEMS have no announced token conversion. Farm at your own risk, only with wallets you control.
+
+---
+
+**Layer Airdrop ID** — [@rmndkyl](https://t.me/rmndkyl)
