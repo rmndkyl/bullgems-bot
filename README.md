@@ -19,7 +19,8 @@ Automates wallet auth, daily/weekly check-ins, quests, mining, **achievement cla
 - **Daily Miner Sign-in** — auto-claim daily check-in
 - **Weekly Miner Check-in** — auto-claim weekly
 - **Quest auto-claim** — TG/Discord/one-time quests (cooldown-aware retry)
-- **Mining automation** — claim semua posisi ready, lalu **deploy terus-menerus sampai energy habis** (multi-position), lokasi dipilih otomatis berdasarkan GEMS/energy tertinggi
+- **Mining automation** — claim semua posisi ready, lalu **deploy terus-menerus sampai energy habis** (multi-position). Semua tipe lokasi didukung: cave, **Greenstone Quarry, Crystal Cavern, Ember Mine, Frozen Depths, Void Rift** — dipilih otomatis berdasarkan level + mining power + energy (bukan flag `isLocked` API yang tidak akurat).
+- **Mining strategy** — `best` (GEMS/energy tertinggi), `fastest` (durasi terpendek), `spread` (rotasi tiap tier supaya dapat ore beragam: sapphire/ruby/diamond/void gem).
 - **Referral claim** — auto-claim pending referral bonuses
 - **Dry run** — lihat rencana belanja tanpa eksekusi
 - **Multi-wallet** — one private key per line in `privateKey.txt`
@@ -93,6 +94,48 @@ menyambar listing murah yang muncul.
 
 ---
 
+## Mining — semua tipe lokasi
+
+`GET /mining/locations` mengembalikan 8 lokasi. **Penting:** field `isLocked` dari API tidak bisa
+dipercaya — Crystal Cavern, Ember Mine, dan Frozen Depths tetap `isLocked: true` walaupun level dan
+power sudah cukup. UI game sendiri hanya mengecek `user.level >= levelRequired`, dan tombol Deploy
+hanya butuh energy + mining power. Uji live: wallet level 14 / 360 PWR berhasil deploy ke ketiga
+lokasi tersebut (HTTP 200, posisi dibuat). Bot memakai logika frontend itu.
+
+| Lokasi | Lvl | Energy | Power | Durasi | GEMS | Ore | GEMS/E |
+|--------|-----|--------|-------|--------|------|-----|--------|
+| cave-* (3 lokasi) | 1 | 5 | 0 | 1m | 5-15 | — | 3.00 |
+| greenstone-quarry | 1 | 10 | 0 | 10m | 8-15 | Iron Ore, Coal, Emerald | 1.50 |
+| crystal-cavern | 4 | 20 | 25 | 30m | 25-45 | Copper Ore, Iron Ore, Sapphire | 2.25 |
+| ember-mine | 8 | 35 | 60 | 1h 30m | 60-100 | Sulfur, Coal, Ruby | 2.86 |
+| frozen-depths | 14 | 50 | 120 | 4h | 200-350 | Cryo Shard, Diamond, Obsidian | **7.00** |
+| void-rift | 20 | 75 | 250 | 8h | 500-800 | Void Dust, Void Gem, Obsidian | **10.67** |
+
+### Strategy (`miningStrategy`)
+
+| Nilai | Perilaku | Kapan dipakai |
+|-------|----------|---------------|
+| `best` (default) | GEMS per energy tertinggi yang **terjangkau** | farming GEMS jangka panjang |
+| `fastest` | durasi terpendek dulu | butuh putaran cepat / achievement jumlah mining |
+| `spread` | rotasi tiap tier (cave → greenstone → crystal → ember → frozen → void) | kumpulkan ore beragam untuk craft/refine/quest |
+
+Lihat semua lokasi + status kelayakan wallet tanpa deploy:
+```bash
+node index.js --locations            # tabel lengkap + pilihan tiap strategy
+node index.js --locations --wallet=3
+```
+
+Contoh output:
+```
+status  lokasi                    lvl  energy  power  durasi   GEMS        ore
+READY   crystal-cavern            4    20      25     30m      25-45       Copper Ore/Iron Ore/Sapphire
+READY   ember-mine                8    35      60     1h 30m   60-100      Sulfur/Coal/Ruby
+energy kurang  frozen-depths      14   50      120    4h       200-350     Cryo Shard/Diamond/Obsidian
+butuh lvl 20   void-rift          20   75      250    8h       500-800     Void Dust/Void Gem/Obsidian
+```
+
+---
+
 ## Requirements
 
 | Item | Required? | Cost |
@@ -137,6 +180,7 @@ node index.js
 8. XP farm    (swap bolak-balik + beli listing P2P murah)
 9. XP swap only    (5 XP/swap, lossless, tanpa belanja)
 10. XP market only (beli listing murah @75 XP per pembelian)
+11. Lihat daftar lokasi mining + status kelayakan (lvl/power/energy)
 ```
 
 ### CLI flags (non-interactive, untuk scheduler / cron)
@@ -150,6 +194,9 @@ node index.js --xp-swaps=100      # override jumlah swap run ini
 node index.js --xp-buys=20        # override jumlah pembelian run ini
 node index.js --shop-only         # achievements + upgrade + buy equipment saja
 node index.js --mining-only
+node index.js --mining-only --strategy=spread   # rotasi semua tier lokasi (ore beragam)
+node index.js --strategy=fastest                # durasi terpendek dulu
+node index.js --locations                        # tabel lokasi + status kelayakan, tanpa deploy
 node index.js --quests-only
 node index.js --auth-only
 node index.js --dry-run           # gabung dengan flag lain: preview rencana
@@ -205,6 +252,7 @@ node index.js --xp-only --wallet=1 --xp-swaps=6 --xp-buys=2
 | `humanize.deployStopChance` | 0.4 | Peluang berhenti deploy di 70-90% energy, bukan selalu 0 |
 | `humanize.randomPhaseOrder` | true | Urutan fase diacak per wallet (deterministik per wallet) |
 | `miningLocation` | `auto` | `auto` = pilih lokasi GEMS/energy terbaik; atau isi id lokasi spesifik |
+| `miningStrategy` | `best` | `best` (GEMS/energy) / `fastest` (durasi terpendek) / `spread` (rotasi tiap tier, ore beragam) |
 | `maxDeploysPerRun` | 50 | Batas deploy per run (safety, cegah loop tak berujung) |
 | `timeout` / `maxRetries` | 20000 / 3 | HTTP timeout / retries |
 | `proxyFile` | proxy.txt | Proxy list filename |
