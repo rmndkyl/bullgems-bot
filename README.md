@@ -134,6 +134,22 @@ energy kurang  frozen-depths      14   50      120    4h       200-350     Cryo 
 butuh lvl 20   void-rift          20   75      250    8h       500-800     Void Dust/Void Gem/Obsidian
 ```
 
+### Hasil claim — terukur live (2026-11-08, wallet multiplier x2.6)
+
+| Lokasi | Energy | Waktu | GEMS base | GEMS diterima | Ore per claim | XP |
+|--------|--------|-------|-----------|---------------|---------------|-----|
+| cave | 5 | 1m | 6 | 15.6 | — | kecil |
+| greenstone-quarry | 10 | 10m | 15 | 39 | 16 Iron Ore, 5 Coal | **+25** |
+| crystal-cavern | 20 | 30m | 28-40 | 72.8-104 | 22-29 Copper Ore, 13 Iron Ore, 3 Sapphire | **±60** |
+
+Temuan penting:
+- **Multiplier berlaku pada GEMS**, bukan ore. Wallet contoh punya x2.6 (daily/weekly/one-time quest bonus), jadi angka di tabel adalah `rewardRanges × multiplier`.
+- **Claim mining memberi XP juga**, bukan cuma GEMS — sekitar 1.7-1.8 XP per base GEM (greenstone base 15 → +25 XP; 2× crystal base 40+28 → +120 XP). Jadi tier tinggi = GEMS besar + ore mahal + XP besar sekaligus.
+- Ore ikut masuk inventory dan bisa dijual di P2P. Nilai pasar ore per claim crystal ±58 GEMS (Copper 0.6, Iron 0.25, Sapphire 3.5), jadi total nilai satu claim crystal ±130-160 GEMS untuk 20 energy.
+- Bot sekarang mencatat ore di log dan ringkasan: `mining claim OK: ... (+104 GEMS @x2.6 | 29x Copper Ore, 13x Iron Ore, 3x Sapphire)` dan `ore=Copper Ore x51, Sapphire x6` di summary.
+
+Kesimpulan: `best` (tier tertinggi yang eligible) tetap pilihan terbaik — cave hanya menang tipis di GEMS/energy mentah, tapi kalah total karena tanpa ore dan XP jauh lebih kecil.
+
 ---
 
 ## Requirements
@@ -214,6 +230,31 @@ node index.js --xp-only --wallet=1 --xp-swaps=6 --xp-buys=2
 > quest, dan mining tetap dijalankan karena tidak merugikan (menambah GEMS/XP).
 
 ---
+
+### Jadwal otomatis (Windows)
+
+Dua wrapper sudah tersedia di folder bot:
+
+| File | Isi | Log |
+|------|-----|-----|
+| `run-daily.bat` | `node index.js --auto` (semua wallet) | `daily-run.log` |
+| `run-xp.bat` | `node index.js --xp-only` (semua wallet) | `xp-run.log` |
+
+Sudah didaftarkan di Task Scheduler (jalan tiap hari 08:00, hanya saat user login):
+
+```bat
+schtasks /Create /TN "LYID-BullGems-Daily" /TR "\"C:\Users\raman\LYID-BOTS\bullgems-bot\run-daily.bat\"" /SC DAILY /ST 08:00 /F
+```
+
+Cek / ubah / hapus:
+```bat
+schtasks /Query /TN "LYID-BullGems-Daily" /FO LIST
+schtasks /Change /TN "LYID-BullGems-Daily" /ST 20:00
+schtasks /Delete /TN "LYID-BullGems-Daily" /F
+```
+
+Argumen bisa ditambahkan lewat wrapper, mis. `run-daily.bat --wallet=3 --dry-run`.
+Catatan: `--auto` menjalankan 37 wallet berurutan (±2-3 jam termasuk XP farm), jadi beri waktu sebelum run berikutnya.
 
 ### config.json options
 
