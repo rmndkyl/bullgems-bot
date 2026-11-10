@@ -6,6 +6,24 @@ Automates wallet auth, daily/weekly check-ins, quests, mining, **achievement cla
 
 ---
 
+## Proof it runs
+
+Every screenshot below is re-created from this bot's own run log (`daily-run.log`, 643 KB) — not a mockup. Wallet addresses are shortened by the bot itself; nothing else is edited.
+
+**XP phase of wallet 57 of 63: market swaps, then p2p buys that the other wallets in the fleet can pick up — level goes up without spending real money.**
+
+![XP phase of wallet 57 of 63: market swaps, then p2p buys that the other wallets in the fleet can pick up — level goes up without spending real money.](docs/screenshots/xp-farm.png)
+
+**Same wallet, second half: energy drained into 20 deploys, gear bought, upgrades applied, and one `Done` line that records everything the wallet did.**
+
+![Same wallet, second half: energy drained into 20 deploys, gear bought, upgrades applied, and one `Done` line that records everything the wallet did.](docs/screenshots/mining-cycle.png)
+
+**`tools/log-stats.js` counts only what is written in the log — no estimate, nothing rounded up.**
+
+![`tools/log-stats.js` counts only what is written in the log — no estimate, nothing rounded up.](docs/screenshots/log-stats.png)
+
+---
+
 ## Features
 
 - **Wallet Signature Auth** — automatic login via `personal_sign` (no captcha, no OAuth)
@@ -215,6 +233,9 @@ node index.js --strategy=fastest                # durasi terpendek dulu
 node index.js --locations                        # tabel lokasi + status kelayakan, tanpa deploy
 node index.js --quests-only
 node index.js --auth-only
+node index.js --status                         # cek game maintenance atau tidak (tanpa login)
+node index.js --wait-open                      # tunggu sampai maintenance selesai, lalu run normal
+node index.js --auto --wait-open --wait-min=240   # tunggu maks 4 jam
 node index.js --dry-run           # gabung dengan flag lain: preview rencana
 node index.js --wallet=3          # jalankan hanya wallet #3 (1-based)
 node index.js --no-upgrade --no-buy --no-xp   # matikan sebagian fitur
@@ -296,6 +317,9 @@ Catatan: `--auto` menjalankan 37 wallet berurutan (±2-3 jam termasuk XP farm), 
 | `miningStrategy` | `best` | `best` (GEMS/energy) / `fastest` (durasi terpendek) / `spread` (rotasi tiap tier, ore beragam) |
 | `maxDeploysPerRun` | 50 | Batas deploy per run (safety, cegah loop tak berujung) |
 | `timeout` / `maxRetries` | 20000 / 3 | HTTP timeout / retries |
+| `loginAttempts` | 3 | Jumlah percobaan login; tiap percobaan ambil **nonce baru** (challenge sekali pakai) |
+| `loginRetryMs` | 2000 | Backoff dasar antar percobaan login (2s, 4s, ...) |
+| `maintenanceStreak` | 3 | Run berhenti otomatis kalau N wallet gagal beruntun karena server 5xx (indikasi maintenance) |
 | `proxyFile` | proxy.txt | Proxy list filename |
 
 ---
@@ -393,6 +417,10 @@ Energy Capacity default **tidak** dibeli: kapasitas tidak menambah energy, hanya
 | Problem | Fix |
 |---------|-----|
 | `Nonce failed ... timeout` | Transient rate-limit. Increase `timeout`, retry. Bot auto-retries. |
+| `Login challenge was already used` | Challenge login **sekali pakai**. Versi lama me-retry `/auth/login` dengan body sama sehingga selalu gagal. Sekarang tiap percobaan ambil nonce baru + tanda tangan ulang (`loginAttempts`). Kalau masih muncul: naikkan `loginAttempts`. |
+| `500: (empty body)` di login | Server Bull Gems error — biasanya game sedang **maintenance**. Cek cepat: `node index.js --status`. Kalau maintenance, tunggu: `node index.js --auto --wait-open`. |
+| `AUTH FAIL ... [server 5xx — kemungkinan maintenance]` | Run otomatis berhenti setelah `maintenanceStreak` wallet gagal beruntun, supaya tidak membakar semua wallet. |
+| `waiting NaNs` (versi lama) | Bug `humanDelay` tidak mengembalikan ms. Sudah diperbaiki: log menampilkan detik sebenarnya. |
 | `Session expired or invalid` | 401 → bot auto-reauths and retries. |
 | `Verification in progress, wait N` | Server cooldown. Bot waits automatically. |
 | `Please link your X (Twitter)` | X quests need a linked handle in Miner Center. Link once in browser. |
